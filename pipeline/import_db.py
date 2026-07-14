@@ -24,11 +24,13 @@ from common import connect, normalize_org_name, slugify
 
 
 def norm(value):
-    """pandas cell -> python value (None for NA)."""
+    """pandas cell -> python value (None for NA, numpy scalars unwrapped)."""
     if value is None or (isinstance(value, float) and pd.isna(value)) or pd.isna(value):
         return None
     if isinstance(value, str):
         return value.strip() or None
+    if hasattr(value, "item"):  # numpy scalar -> plain python for sqlite/json
+        return value.item()
     return value
 
 
@@ -136,15 +138,21 @@ def main() -> None:
                     "reason": norm(row["dup_reason"]) or "possible duplicate",
                 }
             )
+        # Keep every cleaned value the admin review form can use — dropping
+        # grades/ages/compensation detail here would force manual re-entry.
         raw_fields = {
             k: norm(row[k])
             for k in [
                 "title", "org_name", "category", "raw_category", "description", "city", "format",
-                "cost_type", "cost_amount", "compensation", "schedule", "time_commitment",
+                "cost_type", "cost_amount", "compensation", "compensation_detail",
+                "grade_min", "grade_max", "age_min", "age_max", "schedule", "time_commitment",
                 "eligibility_notes", "application_url", "source_url", "contact_email",
                 "application_deadline", "start_date", "end_date", "transportation_notes",
             ]
         }
+        raw_fields["deadlineType"] = (
+            "rolling" if bool(row["is_rolling"]) else ("specific" if norm(row["application_deadline"]) else "unknown")
+        )
         cur.execute(
             """insert into submissions
                (id, source, org_name, raw_fields, missing_fields, duplicate_warnings, status)

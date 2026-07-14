@@ -128,7 +128,8 @@ def parse_eligibility(raw: str | None) -> dict:
         return out
 
     is_ages = "age" in text
-    rng = re.search(r"(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})", text)
+    # ordinal suffixes are common in grade ranges ("rising 9th-11th graders")
+    rng = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s*(?:-|–|to)\s*(\d{1,2})(?:st|nd|rd|th)?", text)
     if rng:
         lo, hi = int(rng.group(1)), int(rng.group(2))
         # bare ranges like '14-18' are ages when they exceed grade numbers
@@ -325,6 +326,12 @@ def main() -> None:
             pd.isna(row["contact_email"]) or row["contact_email"] is None
         ):
             missing.append("application_url or contact_email")
+        # A missing deadline is only acceptable when the row is explicitly
+        # rolling — otherwise it would publish as "rolling admission" forever.
+        if (pd.isna(row["application_deadline"]) or row["application_deadline"] is None) and not bool(
+            row["is_rolling"]
+        ):
+            missing.append("application_deadline or rolling flag")
         missing_lists.append(missing)
         if missing:
             report["incomplete"].append(f"row {i + 2} (\"{row['title'] or '?'}\"): missing {', '.join(missing)}")
