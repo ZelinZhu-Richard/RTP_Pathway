@@ -57,7 +57,9 @@ function matchEntry(text: string, entries: TaxonomyEntry[]): string | undefined 
   for (const entry of entries) {
     for (const term of [entry.label ?? "", ...(entry.synonyms ?? []), entry.id.replace(/_/g, " ")]) {
       const t = term.toLowerCase();
-      if (t.length > 2 && text.includes(t) && (!best || t.length > best.length)) {
+      if (t.length <= 2) continue;
+      const termPattern = new RegExp(`(?:^|\\W)${escapeRegExp(t)}(?=$|\\W)`);
+      if (termPattern.test(text) && (!best || t.length > best.length)) {
         best = { id: entry.id, length: t.length };
       }
     }

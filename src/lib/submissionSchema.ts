@@ -27,7 +27,14 @@ const isoDate = z
   }, "must be a real calendar date")
   .optional();
 
-/** Trim, auto-prefix https:// for bare domains, and reject non-http(s) schemes. */
+const URL_PLACEHOLDERS = new Set(["n/a", "na", "tbd", "unknown", "none", "?", "-", "--"]);
+
+function isUrlPlaceholder(value: string): boolean {
+  const withoutHttpScheme = value.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return URL_PLACEHOLDERS.has(withoutHttpScheme.toLowerCase());
+}
+
+/** Trim, auto-prefix https:// for bare domains, and reject placeholders and non-http(s) schemes. */
 const safeHttpUrl = (max: number) =>
   z
     .string()
@@ -35,6 +42,10 @@ const safeHttpUrl = (max: number) =>
     .transform((s, ctx) => {
       const trimmed = s.trim();
       if (!trimmed) return undefined;
+      if (isUrlPlaceholder(trimmed)) {
+        ctx.addIssue({ code: "custom", message: "must be a valid http(s) link" });
+        return z.NEVER;
+      }
       const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
       try {
         const url = new URL(candidate);

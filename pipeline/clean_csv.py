@@ -160,10 +160,12 @@ def parse_cost(raw: str | None) -> tuple[str, str | None]:
     if raw is None:
         return "free", None
     low = raw.lower()
-    if low.startswith("free") or low in {"$0", "0", "no cost", "no fee"}:
+    if low in {"free", "$0", "0", "no cost", "no fee"}:
         return "free", (raw if low != "free" else None)
     if "$" in raw or any(w in low for w in ("fee", "tuition", "dues", "per class", "/year", "/week")):
         return "paid_program", raw
+    if low.startswith("free"):
+        return "free", raw
     return "free", raw
 
 
