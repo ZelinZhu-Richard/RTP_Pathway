@@ -24,6 +24,7 @@ import pandas as pd
 from common import (
     load_taxonomy,
     match_enum,
+    normalize_link,
     normalize_org_name,
     normalize_url,
     title_similarity,
@@ -220,9 +221,20 @@ def main() -> None:
         "date_fixes": [],
         "category_fixes": [],
         "unmatched_categories": [],
+        "link_fixes": [],
         "dup_groups": [],
         "incomplete": [],
     }
+
+    # --- links: publish only safe, absolute http(s) URLs
+    for col in ["application_url", "source_url"]:
+        fixed_vals = []
+        for i, v in enumerate(df[col]):
+            fixed, note = normalize_link(v)
+            fixed_vals.append(fixed)
+            if note:
+                report["link_fixes"].append(f"row {i + 2}: `{col}` \"{v}\" — {note}")
+        df[col] = fixed_vals
 
     # --- dates
     for col in ["application_deadline", "start_date", "end_date", "last_checked"]:
@@ -385,6 +397,9 @@ def main() -> None:
         "",
         "## Categories that could not be matched",
         *([f"- {x}" for x in report["unmatched_categories"]] or ["- (none)"]),
+        "",
+        "## Link normalization",
+        *([f"- {x}" for x in report["link_fixes"]] or ["- (none)"]),
         "",
         "## Possible duplicates",
         *([f"- {x}" for x in report["dup_groups"]] or ["- (none)"]),

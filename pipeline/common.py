@@ -49,6 +49,30 @@ def normalize_url(url: str) -> str:
     return url.rstrip("/")
 
 
+_DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}([/?#].*)?$", re.IGNORECASE)
+
+
+def normalize_link(url: str | None) -> tuple[str | None, str | None]:
+    """Make a spreadsheet link safe to publish as an href.
+
+    Returns (normalized_url, note): http(s) links pass through; bare domains
+    ("www.example.org") gain https://; anything else — javascript:, data:,
+    or non-URL text — is rejected to None so it can be flagged for review.
+    """
+    if not url:
+        return None, None
+    u = url.strip()
+    scheme_match = re.match(r"^([a-zA-Z][a-zA-Z0-9+.-]*):", u)
+    if scheme_match:
+        scheme = scheme_match.group(1).lower()
+        if scheme in ("http", "https"):
+            return u, None
+        return None, f"rejected unsafe scheme '{scheme}:'"
+    if _DOMAIN_RE.match(u):
+        return f"https://{u}", "added https://"
+    return None, "not a valid web address"
+
+
 def normalize_title(title: str) -> str:
     """Loose title form used only for duplicate comparison (drops years/punctuation)."""
     t = title.lower()

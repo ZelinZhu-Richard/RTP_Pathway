@@ -19,7 +19,33 @@ const optionalTrimmed = (max: number) =>
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+  .refine((s) => {
+    // Shape alone lets 2026-99-99 (or 2026-02-30 via rollover) through, which
+    // would stay "visible" forever and crash the calendar export.
+    const date = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === s;
+  }, "must be a real calendar date")
   .optional();
+
+/** Trim, auto-prefix https:// for bare domains, and reject non-http(s) schemes. */
+const safeHttpUrl = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .transform((s, ctx) => {
+      const trimmed = s.trim();
+      if (!trimmed) return undefined;
+      const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+      try {
+        const url = new URL(candidate);
+        if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
+        return candidate;
+      } catch {
+        ctx.addIssue({ code: "custom", message: "must be a valid http(s) link" });
+        return z.NEVER;
+      }
+    })
+    .optional();
 
 /** The editable listing fields shared by the public submit form and admin review. */
 export const ListingFieldsSchema = z.object({
@@ -43,9 +69,9 @@ export const ListingFieldsSchema = z.object({
   eligibilityNotes: optionalTrimmed(500),
   whatYoullDo: optionalTrimmed(2000),
   howToApply: optionalTrimmed(1000),
-  applicationUrl: optionalTrimmed(500),
+  applicationUrl: safeHttpUrl(500),
   contactEmail: optionalTrimmed(200),
-  sourceUrl: optionalTrimmed(500),
+  sourceUrl: safeHttpUrl(500),
   transportationNotes: optionalTrimmed(500),
   deadlineType: z.enum(["specific", "rolling", "unknown"]).optional(),
   applicationDeadline: isoDate,
