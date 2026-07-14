@@ -1,0 +1,67 @@
+{
+  "categories": [
+    { "id": "internship", "label": "Internship", "synonyms": ["internships", "intern", "summer internship", "paid internship", "work experience"] },
+    { "id": "part_time_job", "label": "Part-time job", "synonyms": ["job", "jobs", "part time", "part-time", "youth employment", "teen job", "work"] },
+    { "id": "volunteer", "label": "Volunteering", "synonyms": ["volunteering", "volunteer opportunity", "community service", "service hours", "service"] },
+    { "id": "summer_program", "label": "Summer program", "synonyms": ["summer camp", "camp", "summer institute", "summer academy", "summer programs"] },
+    { "id": "after_school_program", "label": "After-school program", "synonyms": ["after school", "afterschool", "after-school", "club", "enrichment"] },
+    { "id": "competition", "label": "Competition", "synonyms": ["contest", "challenge", "hackathon", "olympiad", "tournament", "competitions"] },
+    { "id": "scholarship", "label": "Scholarship", "synonyms": ["scholarships", "financial aid", "award", "grant", "college money"] },
+    { "id": "workshop_course", "label": "Workshop / course", "synonyms": ["workshop", "workshops", "course", "courses", "class", "classes", "training", "bootcamp", "coding program", "career training"] },
+    { "id": "research_program", "label": "Research program", "synonyms": ["research", "lab program", "research experience", "science research"] },
+    { "id": "mentorship", "label": "Mentorship", "synonyms": ["mentoring", "mentor program", "college prep", "college preparation", "advising"] }
+  ],
+  "interests": [
+    { "id": "stem", "label": "STEM", "synonyms": ["science", "technology", "engineering", "math", "coding", "computer science", "programming", "robotics", "tech"] },
+    { "id": "health", "label": "Health & medicine", "synonyms": ["healthcare", "medical", "medicine", "hospital", "nursing", "public health"] },
+    { "id": "arts", "label": "Arts & music", "synonyms": ["art", "music", "theater", "theatre", "dance", "creative", "design", "film"] },
+    { "id": "environment", "label": "Environment & animals", "synonyms": ["nature", "conservation", "animals", "wildlife", "outdoors", "sustainability", "gardening", "farm"] },
+    { "id": "business", "label": "Business & entrepreneurship", "synonyms": ["entrepreneurship", "finance", "economics", "startup", "marketing"] },
+    { "id": "leadership", "label": "Leadership & civic", "synonyms": ["civic", "government", "advocacy", "community", "public speaking", "debate", "law", "policy"] },
+    { "id": "education", "label": "Education & literacy", "synonyms": ["tutoring", "teaching", "literacy", "books", "reading", "mentoring kids"] }
+  ],
+  "formats": [
+    { "id": "in_person", "label": "In person", "synonyms": ["in-person", "in person", "onsite", "on-site", "on site"] },
+    { "id": "online", "label": "Online", "synonyms": ["virtual", "remote", "zoom"] },
+    { "id": "hybrid", "label": "Hybrid", "synonyms": ["mixed", "online and in person", "in person and online"] }
+  ],
+  "cost_types": [
+    { "id": "free", "label": "Free", "synonyms": ["no cost", "no fee", "$0", "0", "none", "free of charge"] },
+    { "id": "paid_program", "label": "Costs money", "synonyms": ["fee", "tuition", "cost", "paid program", "registration fee"] }
+  ],
+  "compensation_types": [
+    { "id": "none", "label": "Unpaid", "synonyms": ["unpaid", "no pay", "no compensation", "volunteer basis", "n/a"] },
+    { "id": "stipend", "label": "Stipend", "synonyms": ["stipend provided", "award money", "scholarship money", "prize"] },
+    { "id": "paid", "label": "Paid", "synonyms": ["hourly", "wage", "salary", "paid position", "compensation provided", "per hour"] }
+  ],
+  "schedules": [
+    { "id": "after_school", "label": "After school", "synonyms": ["afterschool", "after-school", "weekday afternoons", "weekday evenings", "school year"] },
+    { "id": "weekend", "label": "Weekends", "synonyms": ["weekend", "saturday", "saturdays", "sunday", "sundays"] },
+    { "id": "summer", "label": "Summer", "synonyms": ["summer break", "june", "july", "august"] },
+    { "id": "school_break", "label": "School breaks", "synonyms": ["winter break", "spring break", "track-out", "holiday"] },
+    { "id": "flexible", "label": "Flexible", "synonyms": ["anytime", "self-paced", "ongoing", "your own schedule", "varies"] }
+  ],
+  "cities": [
+    { "id": "Chapel Hill", "synonyms": ["chapel hill", "chapel hill nc", "unc"] },
+    { "id": "Carrboro", "synonyms": ["carrboro", "carrboro nc"] },
+    { "id": "Durham", "synonyms": ["durham", "durham nc", "duke"] },
+    { "id": "Raleigh", "synonyms": ["raleigh", "raleigh nc", "downtown raleigh"] },
+    { "id": "Cary", "synonyms": ["cary", "cary nc"] },
+    { "id": "Morrisville", "synonyms": ["morrisville", "morrisville nc"] },
+    { "id": "Research Triangle Park", "synonyms": ["rtp", "research triangle park", "the park"] },
+    { "id": "Triangle-wide", "synonyms": ["triangle", "triangle-wide", "triangle wide", "multiple locations", "various locations", "wake county", "durham county", "orange county"] },
+    { "id": "Remote", "synonyms": ["remote", "online only", "anywhere", "virtual"] }
+  ],
+  "report_reasons": [
+    { "id": "outdated", "label": "Information is outdated (deadline passed, program ended)" },
+    { "id": "incorrect", "label": "Information is incorrect (wrong age, location, cost...)" },
+    { "id": "broken_link", "label": "Application link is broken" },
+    { "id": "other", "label": "Something else" }
+  ],
+  "statuses": {
+    "opportunity": ["approved", "archived"],
+    "submission": ["pending", "approved", "rejected"],
+    "report": ["open", "resolved", "dismissed"]
+  },
+  "verification_fresh_days": 180
+}

@@ -6,7 +6,11 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "pipeline:seed": "python3 pipeline/clean_csv.py data/seed_opportunities_raw.csv -o data/seed_opportunities_clean.csv --report data/quality_report.md && python3 pipeline/import_db.py data/seed_opportunities_clean.csv --db data/rtp.db",
+    "setup": "npm run db:migrate && npm run pipeline:seed"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
