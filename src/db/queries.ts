@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { opportunities, organizations, type OpportunityRow } from "@/db/schema";
 import { Filters, buildConditions, orderBy, visibleCondition } from "@/lib/search";
@@ -99,11 +99,13 @@ export function getOpportunityById(id: string) {
 
 export function getOpportunitiesByIds(ids: string[]): OpportunityCard[] {
   if (ids.length === 0) return [];
+  // Saved/compare lookups skip the deadline filter (expired saved items stay
+  // visible, marked closed) but must NOT expose archived listings.
   const rows = db
     .select({ opp: opportunities, orgName: organizations.name })
     .from(opportunities)
     .innerJoin(organizations, eq(opportunities.orgId, organizations.id))
-    .where(sql`${opportunities.id} in ${ids}`)
+    .where(and(inArray(opportunities.id, ids), eq(opportunities.status, "approved")))
     .all();
   return rows.map(toCard);
 }

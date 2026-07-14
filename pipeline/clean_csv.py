@@ -116,13 +116,15 @@ def parse_eligibility(raw: str | None) -> dict:
         return out
     text = raw.lower()
 
-    if "high school" in text:
-        out["grade_min"], out["grade_max"] = 9, 12
-        return out
-
+    # Explicit class-year words beat the generic high-school fallback, so
+    # "high school juniors and seniors" narrows to 11-12 rather than 9-12.
     words = [GRADE_WORDS[w] for w in re.findall(r"[a-z]+", text) if w in GRADE_WORDS]
     if words:
         out["grade_min"], out["grade_max"] = min(words), max(words)
+        return out
+
+    if "high school" in text:
+        out["grade_min"], out["grade_max"] = 9, 12
         return out
 
     is_ages = "age" in text
