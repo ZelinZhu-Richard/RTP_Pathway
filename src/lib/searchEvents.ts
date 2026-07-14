@@ -10,7 +10,10 @@ import { Filters, hasActiveFilters } from "@/lib/search";
 export function logSearchEvent(mode: "keyword" | "nl", queryText: string | null, filters: Filters, resultCount: number): void {
   if (!queryText && !hasActiveFilters(filters)) return;
   try {
-    const { q: _q, keywords: _k, sort: _s, ...loggable } = filters;
+    const loggable: Partial<Filters> = { ...filters };
+    delete loggable.q;
+    delete loggable.keywords;
+    delete loggable.sort;
     db.insert(searchEvents)
       .values({
         id: randomUUID(),

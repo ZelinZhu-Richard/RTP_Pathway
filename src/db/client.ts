@@ -12,7 +12,6 @@ import * as schema from "./schema";
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "rtp.db");
 
 declare global {
-  // eslint-disable-next-line no-var
   var __rtpDb: ReturnType<typeof createDb> | undefined;
 }
 
