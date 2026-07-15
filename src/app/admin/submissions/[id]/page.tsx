@@ -122,6 +122,12 @@ export default async function SubmissionReviewPage({ params }: { params: Promise
         initialFields={mergeFields(raw, extracted)}
         missingFields={missing}
         duplicateWarnings={dups}
+        sheetSync={{
+          status: submission.sheetSyncStatus as "disabled" | "pending" | "synced" | "failed",
+          syncedAt: submission.sheetSyncedAt,
+          error: submission.sheetSyncError,
+          remoteRange: submission.sheetRemoteRange,
+        }}
       />
     </div>
   );

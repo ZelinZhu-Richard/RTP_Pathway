@@ -1,7 +1,13 @@
 import { computeAnalytics } from "@/db/analytics";
 import { fmtDate } from "@/lib/display";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { CategoryChart, CityChart, FreshnessChart, SearchChart } from "@/components/admin/Charts";
+import {
+  CategoryChart,
+  CityChart,
+  DemandSupplyChart,
+  FreshnessChart,
+  SearchChart,
+} from "@/components/admin/Charts";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +39,12 @@ export default function AnalyticsPage() {
     <div>
       <AdminNav />
       <h1 className="text-xl font-bold text-stone-900">Community analytics</h1>
-      <p className="mt-1 mb-4 text-sm text-stone-500">{a.note}</p>
+      <p className="mt-1 text-sm text-stone-600">{a.note}</p>
+      <ul className="mt-2 mb-4 space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        {a.caveats.map((caveat) => <li key={caveat}>• {caveat}</li>)}
+      </ul>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <StatTile label="Active listings" value={a.totals.activeListings} />
         <StatTile
           label="Recently verified"
@@ -46,6 +55,60 @@ export default function AnalyticsPage() {
         <StatTile label="Open reports" value={a.totals.openReports} tone={a.totals.openReports > 0 ? "bad" : undefined} />
         <StatTile label="Searches (30d)" value={a.totals.searches30d} />
         <StatTile label="…with zero results" value={a.totals.zeroResultSearches30d} tone={a.totals.zeroResultSearches30d > 0 ? "warn" : undefined} />
+        <StatTile
+          label="Categorized coverage"
+          value={`${a.searchCoverage.percentage}%`}
+          tone={a.totals.searches30d > 0 && a.searchCoverage.percentage < 50 ? "warn" : undefined}
+        />
+        <StatTile
+          label="Failed Sheet syncs"
+          value={a.totals.failedSheetSyncs}
+          tone={a.totals.failedSheetSyncs > 0 ? "bad" : undefined}
+        />
+      </div>
+
+      <div className="mb-4">
+        <ChartCard
+          title="Category demand compared with active supply"
+          subtitle={`${a.searchCoverage.categorizedSearches30d} of ${a.searchCoverage.totalSearches30d} completed searches had a category in the last 30 days`}
+        >
+          {a.demandSupplyByCategory.length ? (
+            <>
+              <DemandSupplyChart data={a.demandSupplyByCategory} />
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <caption className="sr-only">Category demand, active supply, zero-result demand, and demand per listing</caption>
+                  <thead>
+                    <tr className="border-b border-stone-200 text-left text-xs uppercase tracking-wide text-stone-500">
+                      <th scope="col" className="py-1.5 pr-3">Category</th>
+                      <th scope="col" className="py-1.5 px-3 text-right">Searches</th>
+                      <th scope="col" className="py-1.5 px-3 text-right">Active listings</th>
+                      <th scope="col" className="py-1.5 px-3 text-right">Zero-result</th>
+                      <th scope="col" className="py-1.5 pl-3 text-right">Demand / listing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.demandSupplyByCategory.map((row) => (
+                      <tr key={row.key} className="border-b border-stone-100 last:border-0">
+                        <th scope="row" className="py-1.5 pr-3 text-left font-medium text-stone-800">{row.label}</th>
+                        <td className="py-1.5 px-3 text-right tabular-nums">{row.searches}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums">{row.activeListings}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums">{row.zeroResultSearches}</td>
+                        <td className="py-1.5 pl-3 text-right font-medium tabular-nums">
+                          {row.noSupply ? (
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 ring-1 ring-red-200">No supply</span>
+                          ) : row.demandPerListing === null ? "—" : row.demandPerListing.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="py-6 text-center text-sm text-stone-400">No categorized search or supply data yet.</p>
+          )}
+        </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -92,6 +155,26 @@ export default function AnalyticsPage() {
       <div className="mt-4">
         <ChartCard title="Listing freshness" subtitle="Verification and expiry state of every listing in the database">
           <FreshnessChart data={a.freshness} />
+        </ChartCard>
+      </div>
+
+      <div className="mt-4">
+        <ChartCard title="Latest Python pipeline import" subtitle="Most recent clean/merge/import run recorded in the audit log">
+          {a.latestPipelineImport ? (
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+              <div><dt className="text-xs text-stone-500">Imported</dt><dd className="font-semibold text-stone-900">{a.latestPipelineImport.inserted}</dd></div>
+              <div><dt className="text-xs text-stone-500">Queued</dt><dd className="font-semibold text-stone-900">{a.latestPipelineImport.queued}</dd></div>
+              <div><dt className="text-xs text-stone-500">Skipped</dt><dd className="font-semibold text-stone-900">{a.latestPipelineImport.skipped}</dd></div>
+              <div><dt className="text-xs text-stone-500">Input rows</dt><dd className="font-semibold text-stone-900">{a.latestPipelineImport.rows ?? "—"}</dd></div>
+              <div><dt className="text-xs text-stone-500">Completed</dt><dd className="font-semibold text-stone-900">{fmtDate(a.latestPipelineImport.createdAt)}</dd></div>
+              <div className="col-span-2 sm:col-span-5">
+                <dt className="text-xs text-stone-500">Sources</dt>
+                <dd className="text-stone-700">{a.latestPipelineImport.sources.join(", ") || "Not recorded"}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="py-4 text-center text-sm text-stone-400">No pipeline import audit has been recorded yet.</p>
+          )}
         </ChartCard>
       </div>
 

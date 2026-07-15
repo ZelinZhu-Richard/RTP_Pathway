@@ -3,17 +3,159 @@
 :root {
   --background: #fafaf9;
   --foreground: #1c1917;
+  /* RTP Pathway identity: NC-pine ground, foam wash, amber signal dots. */
+  --pine: #123f3a;
+  --pine-deep: #0b2b28;
+  --foam: #e9f4f1;
+  --amber: #fbbf24;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-pine: var(--pine);
+  --color-pine-deep: var(--pine-deep);
+  --color-foam: var(--foam);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-bricolage);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Interactive elements ease between states instead of snapping; low-specificity
+   element selectors so Tailwind utilities still win. */
+a,
+button,
+input,
+select,
+textarea,
+summary {
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+/* ---------- Motion system ---------- */
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes edge-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes node-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.8);
+  }
+}
+
+/* Hero elements stagger in via inline animation-delay. */
+.anim-rise {
+  animation: fade-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Every route entry fades and rises slightly (applied by src/app/template.tsx). */
+.page-enter {
+  animation: page-enter 0.35s ease-out both;
+}
+
+/* Sections below the fold reveal on scroll where the browser supports it. */
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: fade-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 40%;
+  }
+}
+
+/* ---------- Triangle map (src/components/TriangleMap.tsx) ---------- */
+
+.tri-edge {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: edge-draw 1.5s cubic-bezier(0.65, 0.05, 0.36, 1) forwards;
+}
+
+.tri-node-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: node-pulse 3.5s ease-in-out infinite;
+}
+
+/* ---------- Reduced motion: everything settles instantly ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .tri-edge {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  /* SMIL-driven drifting dots can't be paused from CSS; swap to static ones. */
+  .tri-dot {
+    display: none;
+  }
+  .tri-dot-static {
+    display: inline;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tri-dot-static {
+    display: none;
+  }
 }

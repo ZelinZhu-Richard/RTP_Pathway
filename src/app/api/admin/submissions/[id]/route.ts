@@ -6,6 +6,7 @@ import { db } from "@/db/client";
 import { opportunities, organizations, submissions } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { normalizeOrgName } from "@/lib/duplicates";
+import { syncSubmissionToGoogleSheet } from "@/lib/googleSheets";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { slugify } from "@/lib/slug";
 import { ListingFieldsSchema, missingListingFields } from "@/lib/submissionSchema";
@@ -50,7 +51,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .where(eq(submissions.id, id))
       .run();
     writeAudit("submission_rejected", "submission", id, { note: parsed.data.note });
-    return NextResponse.json({ ok: true, status: "rejected" });
+    const sheetSyncStatus = await syncAfterReview(id);
+    return NextResponse.json({ ok: true, status: "rejected", sheetSyncStatus });
   }
 
   // Approve: the reviewed fields must be complete before publishing.
@@ -112,7 +114,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .run();
 
   db.update(submissions)
-    .set({ status: "approved", opportunityId: oppId, reviewedAt: now })
+    .set({
+      status: "approved",
+      opportunityId: oppId,
+      reviewedAt: now,
+      orgName,
+      // Persist the server-validated reviewer edits before mirroring them so
+      // the approved Sheet row matches the published SQLite opportunity.
+      rawFields: JSON.stringify(fields),
+      missingFields: "[]",
+    })
     .where(eq(submissions.id, id))
     .run();
 
@@ -120,5 +131,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   writeAudit("opportunity_published", "opportunity", oppId, { fromSubmission: id });
 
   const slug = db.select({ slug: opportunities.slug }).from(opportunities).where(eq(opportunities.id, oppId)).get();
-  return NextResponse.json({ ok: true, status: "approved", opportunityId: oppId, slug: slug?.slug });
+  const sheetSyncStatus = await syncAfterReview(id);
+  return NextResponse.json({ ok: true, status: "approved", opportunityId: oppId, slug: slug?.slug, sheetSyncStatus });
+}
+
+async function syncAfterReview(id: string): Promise<string | null> {
+  try {
+    return (await syncSubmissionToGoogleSheet(id)).status;
+  } catch {
+    // Approval/rejection is already committed locally and remains successful.
+    return null;
+  }
 }

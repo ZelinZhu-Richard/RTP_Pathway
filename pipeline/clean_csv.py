@@ -2,7 +2,7 @@
 """Clean a raw opportunity spreadsheet into the canonical import format.
 
 Usage:
-    python3 pipeline/clean_csv.py data/seed_opportunities_raw.csv \
+    python3 pipeline/clean_csv.py data/partner_a.csv data/partner_b.csv \
         -o data/seed_opportunities_clean.csv --report data/quality_report.md
 
 Steps: normalize headers via an alias map, NA-ify blank tokens, standardize
@@ -18,6 +18,7 @@ import argparse
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -77,6 +78,49 @@ def map_headers(columns: list[str]) -> tuple[dict[str, str], list[str]]:
         else:
             unknown.append(col)
     return mapping, unknown
+
+
+def load_sources(input_csvs: list[str]) -> tuple[pd.DataFrame, list[str], list[str], dict[str, int]]:
+    """Normalize each source's schema before combining it.
+
+    Header mapping must happen per file: concatenating first would discard
+    partner-specific aliases and make cross-source duplicate detection less
+    trustworthy. Provenance uses the original spreadsheet row number (header
+    is row 1) and a basename so reports never expose local directory paths.
+    """
+    frames: list[pd.DataFrame] = []
+    renamed: list[str] = []
+    dropped: list[str] = []
+    source_counts: dict[str, int] = {}
+
+    for input_csv in input_csvs:
+        source = Path(input_csv).name
+        frame = pd.read_csv(input_csv, dtype=str, keep_default_na=False)
+        source_counts[source] = source_counts.get(source, 0) + len(frame)
+
+        mapping, unknown_cols = map_headers(list(frame.columns))
+        frame = frame.rename(columns=mapping).drop(columns=unknown_cols)
+        for canon in HEADER_ALIASES:
+            if canon not in frame.columns:
+                frame[canon] = None
+        frame["source_file"] = source
+        frame["source_row"] = range(2, len(frame) + 2)
+
+        renamed.extend(
+            f"`{source}`: `{raw}` → `{canon}`"
+            for raw, canon in mapping.items()
+            if normalize_header(raw) != canon.replace("_", " ")
+        )
+        dropped.extend(f"`{source}`: `{column}`" for column in unknown_cols)
+        frames.append(frame)
+
+    if not frames:
+        raise ValueError("At least one input CSV is required")
+    return pd.concat(frames, ignore_index=True), renamed, dropped, source_counts
+
+
+def source_ref(df: pd.DataFrame, index: int) -> str:
+    return f"`{df.at[index, 'source_file']}` row {int(df.at[index, 'source_row'])}"
 
 
 # ---------------------------------------------------------------- cell cleaning
@@ -195,35 +239,34 @@ def derive_interest_tags(title: str | None, description: str | None, taxonomy: d
     return tags
 
 
-# ---------------------------------------------------------------- main
+# ---------------------------------------------------------------- reusable workflow + CLI
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("input_csv")
-    ap.add_argument("-o", "--output", required=True)
-    ap.add_argument("--report", required=True)
-    args = ap.parse_args()
+def clean_csv_files(
+    input_csvs: list[str], output: str, report_path: str
+) -> dict[str, int]:
+    """Clean, merge, analyze, and write one or more partner CSV files.
 
-    df = pd.read_csv(args.input_csv, dtype=str, keep_default_na=False)
+    The command-line entry point delegates here so tests and other Python
+    workflows can reuse the exact same behavior without spawning a process.
+    """
+    args = argparse.Namespace(input_csv=input_csvs, output=output, report=report_path)
+
+    df, renamed_notes, dropped_notes, source_counts = load_sources(args.input_csv)
     original_rows = len(df)
-
-    mapping, unknown_cols = map_headers(list(df.columns))
-    df = df.rename(columns=mapping)
-    df = df.drop(columns=unknown_cols)
-    for canon in HEADER_ALIASES:
-        if canon not in df.columns:
-            df[canon] = None
 
     df = df.map(clean_cell)
 
     taxonomy = load_taxonomy()
     report: dict[str, list[str]] = {
-        "renamed": [f"`{k}` → `{v}`" for k, v in mapping.items() if normalize_header(k) != v.replace("_", " ")],
-        "dropped": [f"`{c}`" for c in unknown_cols],
+        "renamed": renamed_notes,
+        "dropped": dropped_notes,
         "date_fixes": [],
+        "date_rejections": [],
         "category_fixes": [],
         "unmatched_categories": [],
         "link_fixes": [],
+        "link_rejections": [],
+        "taxonomy_mismatches": [],
         "dup_groups": [],
         "incomplete": [],
     }
@@ -235,7 +278,11 @@ def main() -> None:
             fixed, note = normalize_link(v)
             fixed_vals.append(fixed)
             if note:
-                report["link_fixes"].append(f"row {i + 2}: `{col}` \"{v}\" — {note}")
+                detail = f"{source_ref(df, i)}: `{col}` \"{v}\" — {note}"
+                if v and fixed is None:
+                    report["link_rejections"].append(detail)
+                else:
+                    report["link_fixes"].append(detail)
         df[col] = fixed_vals
 
     # --- dates
@@ -246,9 +293,11 @@ def main() -> None:
             iso_vals.append(iso)
             rolling_flags.append(rolling)
             if failure:
-                report["date_fixes"].append(f"row {i + 2}: could not parse `{col}` value \"{failure}\"")
+                report["date_rejections"].append(
+                    f"{source_ref(df, i)}: could not parse `{col}` value \"{failure}\""
+                )
             elif v and iso and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.strip()):
-                report["date_fixes"].append(f"row {i + 2}: `{col}` \"{v}\" → {iso}")
+                report["date_fixes"].append(f"{source_ref(df, i)}: `{col}` \"{v}\" → {iso}")
         df[col] = iso_vals
         if col == "application_deadline":
             df["is_rolling"] = rolling_flags
@@ -260,16 +309,27 @@ def main() -> None:
         matched = match_enum(raw, taxonomy["categories"])
         matched_categories.append(matched)
         if raw and matched and normalize_org_name(raw) != matched.replace("_", " "):
-            report["category_fixes"].append(f"row {i + 2}: \"{raw}\" → `{matched}`")
+            report["category_fixes"].append(f"{source_ref(df, i)}: \"{raw}\" → `{matched}`")
         elif raw and not matched:
-            report["unmatched_categories"].append(f"row {i + 2}: \"{raw}\"")
+            report["unmatched_categories"].append(f"{source_ref(df, i)}: \"{raw}\"")
     df["raw_category"] = raw_categories
     df["category"] = matched_categories
 
-    # --- other enums
-    df["city"] = [match_enum(v, taxonomy["cities"], cutoff=0.9) for v in df["city"]]
-    df["format"] = [match_enum(v, taxonomy["formats"]) for v in df["format"]]
-    df["schedule"] = [match_enum(v, taxonomy["schedules"]) for v in df["schedule"]]
+    # --- other enums, retaining every non-matching raw value in the report
+    for column, taxonomy_key, cutoff in [
+        ("city", "cities", 0.9),
+        ("format", "formats", 0.85),
+        ("schedule", "schedules", 0.85),
+    ]:
+        normalized_values = []
+        for i, raw in enumerate(df[column]):
+            matched = match_enum(raw, taxonomy[taxonomy_key], cutoff=cutoff)
+            normalized_values.append(matched)
+            if raw and not matched:
+                report["taxonomy_mismatches"].append(
+                    f"{source_ref(df, i)}: `{column}` value \"{raw}\""
+                )
+        df[column] = normalized_values
 
     costs = [parse_cost(v) for v in df["cost_raw"]]
     df["cost_type"] = [c[0] for c in costs]
@@ -292,9 +352,21 @@ def main() -> None:
     df["dup_group"] = None
     df["is_duplicate"] = False
     df["dup_reason"] = None
-    group_id = 0
     rows = df.to_dict("records")
-    assigned: dict[int, int] = {}
+    parent = list(range(len(rows)))
+    pair_matches: list[tuple[int, int, str, list[str]]] = []
+
+    def find(item: int) -> int:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    def union(left: int, right: int) -> None:
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
     for i in range(len(rows)):
         for j in range(i + 1, len(rows)):
             a, b = rows[i], rows[j]
@@ -309,28 +381,48 @@ def main() -> None:
             ):
                 reason = f"same organization + similar title ({title_similarity(a['title'], b['title']):.2f})"
             if reason:
-                grp = assigned.get(i) or assigned.get(j)
-                if grp is None:
-                    group_id += 1
-                    grp = group_id
-                assigned[i] = assigned[j] = grp
-                df.loc[i, "dup_group"] = grp
-                df.loc[j, "dup_group"] = grp
-                df.loc[j, "dup_reason"] = reason
-                report["dup_groups"].append(
-                    f"group {grp}: rows {i + 2} and {j + 2} — \"{a['title']}\" / \"{b['title']}\" ({reason})"
-                )
+                union(i, j)
+                conflict_fields = [
+                    field
+                    for field in [
+                        "title", "description", "category", "city", "format",
+                        "application_deadline", "start_date", "end_date", "contact_email",
+                    ]
+                    if a.get(field) is not None
+                    and b.get(field) is not None
+                    and str(a[field]).strip().casefold() != str(b[field]).strip().casefold()
+                ]
+                pair_matches.append((i, j, reason, conflict_fields))
 
-    # within each group, keep the most complete row; flag the rest as duplicates
-    for grp in sorted(set(assigned.values())):
-        members = [i for i, g in assigned.items() if g == grp]
+    # Union-find keeps transitive matches in one group (A≈B and B≈C), rather
+    # than accidentally publishing two candidates from an overlapping group.
+    grouped: dict[int, list[int]] = {}
+    for i in range(len(rows)):
+        grouped.setdefault(find(i), []).append(i)
+    duplicate_groups = [members for members in grouped.values() if len(members) > 1]
+    group_for_row: dict[int, int] = {}
+    for grp, members in enumerate(duplicate_groups, start=1):
+        for i in members:
+            group_for_row[i] = grp
+            df.loc[i, "dup_group"] = grp
         completeness = {i: df.loc[i].notna().sum() for i in members}
         primary = max(completeness, key=lambda i: completeness[i])
         for i in members:
             if i != primary:
                 df.loc[i, "is_duplicate"] = True
-                if not df.loc[i, "dup_reason"]:
-                    df.loc[i, "dup_reason"] = "duplicate group member"
+                related = [reason for left, right, reason, _ in pair_matches if i in (left, right)]
+                df.loc[i, "dup_reason"] = related[0] if related else "duplicate group member"
+
+    for i, j, reason, conflict_fields in pair_matches:
+        conflict_note = (
+            f"; conflicting fields retained for review: {', '.join(conflict_fields)}"
+            if conflict_fields
+            else ""
+        )
+        report["dup_groups"].append(
+            f"group {group_for_row[i]}: {source_ref(df, i)} and {source_ref(df, j)} — "
+            f"\"{rows[i]['title']}\" / \"{rows[j]['title']}\" ({reason}{conflict_note})"
+        )
 
     # --- completeness
     missing_lists = []
@@ -348,11 +440,14 @@ def main() -> None:
             missing.append("application_deadline or rolling flag")
         missing_lists.append(missing)
         if missing:
-            report["incomplete"].append(f"row {i + 2} (\"{row['title'] or '?'}\"): missing {', '.join(missing)}")
+            report["incomplete"].append(
+                f"{source_ref(df, i)} (\"{row['title'] or '?'}\"): missing {', '.join(missing)}"
+            )
     df["incomplete"] = [bool(m) for m in missing_lists]
     df["missing_fields"] = [json.dumps(m) for m in missing_lists]
 
     out_cols = [
+        "source_file", "source_row",
         "title", "org_name", "category", "raw_category", "description", "interest_tags",
         "grade_min", "grade_max", "age_min", "age_max", "eligibility_notes",
         "city", "format", "cost_type", "cost_amount", "compensation", "compensation_detail",
@@ -364,23 +459,42 @@ def main() -> None:
     df[out_cols].to_csv(args.output, index=False)
 
     clean_count = int((~df["is_duplicate"] & ~df["incomplete"]).sum())
+    queued_count = int((df["is_duplicate"] | df["incomplete"]).sum())
     null_rates = {
         col: f"{df[col].isna().mean():.0%}"
         for col in ["category", "city", "format", "application_deadline", "application_url", "last_checked"]
     }
+    category_counts = df["category"].fillna("(unmatched)").value_counts().to_dict()
+    city_counts = df["city"].fillna("(unmatched)").value_counts().to_dict()
+    source_summary = []
+    for source, count in source_counts.items():
+        source_rows = df["source_file"] == source
+        ready = int((source_rows & ~df["is_duplicate"] & ~df["incomplete"]).sum())
+        queued = count - ready
+        rate = ready / count if count else 0
+        source_summary.append(
+            f"- `{source}`: {count} input rows; {ready} ready ({rate:.0%}); "
+            f"{queued} queued for review"
+        )
 
     lines = [
         "# Data quality report",
         "",
-        f"Input: `{args.input_csv}` — {original_rows} rows",
+        f"Inputs: {', '.join(f'`{Path(path).name}`' for path in args.input_csv)} — {original_rows} rows combined",
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         "## Summary",
         "",
         f"- **{clean_count}** rows clean and ready to import",
+        f"- **{queued_count}** unique rows queued for review",
         f"- **{int(df['is_duplicate'].sum())}** rows flagged as likely duplicates (routed to review queue)",
         f"- **{int(df['incomplete'].sum())}** rows incomplete (routed to review queue)",
         f"- **{int(df['is_rolling'].sum())}** rows with rolling/ongoing deadlines",
+        f"- **{clean_count / original_rows:.0%}** of input rows ready to import" if original_rows else "- No input rows",
+        f"- Reconciliation: {clean_count} ready + {queued_count} queued = {original_rows} input rows",
+        "",
+        "## Source coverage",
+        *source_summary,
         "",
         "## Columns renamed",
         *([f"- {x}" for x in report["renamed"]] or ["- (none)"]),
@@ -391,8 +505,17 @@ def main() -> None:
         "## Null rates (after cleaning)",
         *[f"- `{col}`: {rate}" for col, rate in null_rates.items()],
         "",
-        "## Date values standardized or rejected",
+        "## Category distribution",
+        *[f"- `{label}`: {count}" for label, count in category_counts.items()],
+        "",
+        "## City distribution",
+        *[f"- `{label}`: {count}" for label, count in city_counts.items()],
+        "",
+        "## Date values standardized",
         *([f"- {x}" for x in report["date_fixes"]] or ["- (none)"]),
+        "",
+        "## Date values rejected",
+        *([f"- {x}" for x in report["date_rejections"]] or ["- (none)"]),
         "",
         "## Category values normalized",
         *([f"- {x}" for x in report["category_fixes"]] or ["- (none)"]),
@@ -400,8 +523,14 @@ def main() -> None:
         "## Categories that could not be matched",
         *([f"- {x}" for x in report["unmatched_categories"]] or ["- (none)"]),
         "",
-        "## Link normalization",
+        "## Other taxonomy values that could not be matched",
+        *([f"- {x}" for x in report["taxonomy_mismatches"]] or ["- (none)"]),
+        "",
+        "## Links normalized",
         *([f"- {x}" for x in report["link_fixes"]] or ["- (none)"]),
+        "",
+        "## Links rejected",
+        *([f"- {x}" for x in report["link_rejections"]] or ["- (none)"]),
         "",
         "## Possible duplicates",
         *([f"- {x}" for x in report["dup_groups"]] or ["- (none)"]),
@@ -413,9 +542,25 @@ def main() -> None:
     with open(args.report, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    print(f"Cleaned {original_rows} rows → {args.output}")
+    print(f"Cleaned and merged {original_rows} rows from {len(args.input_csv)} source(s) → {args.output}")
     print(f"  clean: {clean_count}, duplicates: {int(df['is_duplicate'].sum())}, incomplete: {int(df['incomplete'].sum())}")
     print(f"  report: {args.report}")
+    return {
+        "input_rows": original_rows,
+        "ready_rows": clean_count,
+        "queued_rows": queued_count,
+        "duplicate_rows": int(df["is_duplicate"].sum()),
+        "incomplete_rows": int(df["incomplete"].sum()),
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("input_csv", nargs="+", help="one or more partner CSV files")
+    ap.add_argument("-o", "--output", required=True)
+    ap.add_argument("--report", required=True)
+    args = ap.parse_args()
+    clean_csv_files(args.input_csv, args.output, args.report)
 
 
 if __name__ == "__main__":

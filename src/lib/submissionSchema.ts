@@ -96,7 +96,6 @@ export const SubmissionBodySchema = z.object({
   submitterEmail: optionalTrimmed(200),
   fields: ListingFieldsSchema,
   messyText: z.string().max(12_000).optional(),
-  extractedFields: z.record(z.string(), z.unknown()).optional(),
 });
 export type SubmissionBody = z.infer<typeof SubmissionBodySchema>;
 

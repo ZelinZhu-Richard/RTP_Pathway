@@ -64,7 +64,7 @@ export default function ComparePage() {
         <div className="rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center text-stone-500">
           <p>Save at least two opportunities to compare them.</p>
           <p className="mt-1 text-sm">
-            <Link href="/" className="text-teal-700 underline">
+            <Link href="/explore" className="text-teal-700 underline">
               Browse opportunities →
             </Link>
           </p>

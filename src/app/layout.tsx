@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
@@ -10,6 +10,11 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
 });
 
@@ -26,17 +31,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
-        <header className="border-b border-stone-200 bg-white">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} antialiased min-h-screen flex flex-col`}
+      >
+        <header className="sticky top-0 z-40 border-b border-stone-200/80 bg-white/85 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
             <Link href="/" className="flex items-baseline gap-2">
-              <span className="text-lg font-bold tracking-tight text-teal-800">RTP Pathway</span>
+              <span className="whitespace-nowrap font-display text-lg font-bold tracking-tight text-teal-800">
+                RTP Pathway
+              </span>
               <span className="hidden text-xs text-stone-500 sm:inline">
                 opportunities for Triangle students
               </span>
             </Link>
             <nav className="flex items-center gap-1 text-sm">
-              <Link href="/" className="rounded-md px-3 py-1.5 text-stone-700 hover:bg-stone-100">
+              <Link href="/explore" className="rounded-md px-3 py-1.5 text-stone-700 hover:bg-stone-100">
                 Explore
               </Link>
               <Link href="/saved" className="rounded-md px-3 py-1.5 text-stone-700 hover:bg-stone-100">
@@ -47,9 +56,9 @@ export default function RootLayout({
               </Link>
               <Link
                 href="/submit"
-                className="ml-1 rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800"
+                className="ml-1 whitespace-nowrap rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800"
               >
-                Submit an opportunity
+                Submit<span className="hidden md:inline"> an opportunity</span>
               </Link>
             </nav>
           </div>

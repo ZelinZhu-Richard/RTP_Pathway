@@ -59,6 +59,7 @@ export function SubmitForm() {
   const [submitter, setSubmitter] = useState({ name: "", email: "" });
   const [messyText, setMessyText] = useState("");
   const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [pendingOverwrites, setPendingOverwrites] = useState<Record<string, string>>({});
   const [extracting, setExtracting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
@@ -70,21 +71,28 @@ export function SubmitForm() {
   async function runExtraction() {
     setExtracting(true);
     setError(null);
+    setPendingOverwrites({});
     try {
       const res = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messyText }),
       });
-      const data: Extraction = await res.json();
+      const data = (await res.json()) as Extraction & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Extraction failed");
       setExtraction(data);
       if (data.fields) {
         const next: Record<string, string> = { ...fields };
+        const conflicts: Record<string, string> = {};
         for (const [key, value] of Object.entries(data.fields)) {
           if (key === "assumptions" || value === null || value === undefined) continue;
-          next[key] = String(value);
+          const suggested = String(value);
+          const current = fields[key]?.trim();
+          if (current && current !== suggested) conflicts[key] = suggested;
+          else next[key] = suggested;
         }
         setFields(next);
+        setPendingOverwrites(conflicts);
       }
     } catch {
       setError("Extraction failed — please fill in the fields manually.");
@@ -103,7 +111,6 @@ export function SubmitForm() {
         submitterName: submitter.name || undefined,
         submitterEmail: submitter.email || undefined,
         messyText: messyText || undefined,
-        extractedFields: extraction?.fields ?? undefined,
         fields: {
           ...Object.fromEntries(
             Object.entries(fields).filter(([k, v]) => v !== "" && !["gradeMin", "gradeMax", "ageMin", "ageMax"].includes(k)),
@@ -204,6 +211,33 @@ export function SubmitForm() {
                 Reviewer notes: {(extraction.fields.assumptions as string[]).join("; ")}
               </p>
             )}
+          </div>
+        )}
+        {Object.keys(pendingOverwrites).length > 0 && (
+          <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950 ring-1 ring-amber-200">
+            <p className="font-medium">Your existing entries were preserved.</p>
+            <p className="mt-1 text-xs">
+              AI suggested different values for {Object.keys(pendingOverwrites).join(", ")}. Review the suggestion before replacing fields you already entered.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setFields((current) => ({ ...current, ...pendingOverwrites }));
+                  setPendingOverwrites({});
+                }}
+                className="rounded-md bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-900"
+              >
+                Use AI values for these fields
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingOverwrites({})}
+                className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Keep my entries
+              </button>
+            </div>
           </div>
         )}
       </section>

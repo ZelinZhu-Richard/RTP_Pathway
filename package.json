@@ -12,6 +12,8 @@
     "test:pipeline": "python3 -m unittest discover -s pipeline -p 'test_*.py'",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "sheets:setup": "tsx scripts/google-sheets-setup.ts",
+    "sheets:retry": "tsx scripts/google-sheets-retry.ts",
     "pipeline:seed": "python3 pipeline/clean_csv.py data/seed_opportunities_raw.csv -o data/seed_opportunities_clean.csv --report data/quality_report.md && python3 pipeline/import_db.py data/seed_opportunities_clean.csv --db data/rtp.db",
     "setup": "npm run db:migrate && npm run pipeline:seed"
   },
@@ -19,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.111.0",
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
+    "google-auth-library": "^10.9.0",
     "next": "15.5.20",
     "react": "19.1.0",
     "react-dom": "19.1.0",

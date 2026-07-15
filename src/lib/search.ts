@@ -25,6 +25,14 @@ export interface Filters {
   sort?: "deadline" | "newest";
 }
 
+export interface Pagination {
+  page: number;
+  pageSize: number;
+}
+
+export const DEFAULT_PAGE_SIZE = 12;
+export const MAX_PAGE_SIZE = 48;
+
 const inSet = (value: string | undefined, ids: string[]) =>
   value && ids.includes(value) ? value : undefined;
 
@@ -47,6 +55,40 @@ export function parseFilters(params: URLSearchParams): Filters {
   const sort = params.get("sort");
   if (sort === "deadline" || sort === "newest") filters.sort = sort;
   return filters;
+}
+
+/** Parse bounded public-directory pagination independently from search filters. */
+export function parsePagination(params: URLSearchParams): Pagination {
+  const rawPage = Number(params.get("page"));
+  const rawPageSize = Number(params.get("pageSize"));
+  return {
+    page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
+    pageSize:
+      Number.isInteger(rawPageSize) && rawPageSize > 0
+        ? Math.min(rawPageSize, MAX_PAGE_SIZE)
+        : DEFAULT_PAGE_SIZE,
+  };
+}
+
+/** Canonical URL representation shared by SSR, the API, and the client UI. */
+export function filtersToSearchParams(
+  filters: Filters,
+  pagination?: Partial<Pagination>,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  const q = filters.q?.trim();
+  if (q) params.set("q", q.slice(0, 200));
+  for (const key of ["category", "format", "cost", "compensation", "city", "schedule"] as const) {
+    if (filters[key]) params.set(key, String(filters[key]));
+  }
+  if (filters.grade) params.set("grade", String(filters.grade));
+  if (filters.deadlineWithinDays) params.set("deadlineWithinDays", String(filters.deadlineWithinDays));
+  if (filters.sort && filters.sort !== "deadline") params.set("sort", filters.sort);
+  if (pagination?.page && pagination.page > 1) params.set("page", String(pagination.page));
+  if (pagination?.pageSize && pagination.pageSize !== DEFAULT_PAGE_SIZE) {
+    params.set("pageSize", String(Math.min(pagination.pageSize, MAX_PAGE_SIZE)));
+  }
+  return params;
 }
 
 export function hasActiveFilters(filters: Filters): boolean {

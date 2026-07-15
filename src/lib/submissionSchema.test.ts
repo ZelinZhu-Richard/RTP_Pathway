@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ListingFieldsSchema } from "./submissionSchema";
+import { ListingFieldsSchema, SubmissionBodySchema } from "./submissionSchema";
 
 const URL_FIELDS = ["applicationUrl", "sourceUrl"] as const;
 const PLACEHOLDERS = ["N/A", "NA", "TBD", "unknown", "none", "?", "-", "--"];
@@ -57,4 +57,13 @@ test("continues to reject unsafe URL schemes", () => {
       assert.equal(result.success, false, `${field} accepted ${value}`);
     }
   }
+});
+
+test("strips client-claimed extraction metadata from public submissions", () => {
+  const parsed = SubmissionBodySchema.parse({
+    fields: { title: "Validated title" },
+    extractedFields: { title: "Client-claimed AI title", assumptions: ["untrusted"] },
+  });
+
+  assert.equal("extractedFields" in parsed, false);
 });

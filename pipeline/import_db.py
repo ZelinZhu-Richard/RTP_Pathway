@@ -17,6 +17,7 @@ import argparse
 import json
 import sys
 import uuid
+from pathlib import Path
 
 import pandas as pd
 
@@ -143,6 +144,7 @@ def main() -> None:
         raw_fields = {
             k: norm(row[k])
             for k in [
+                "source_file", "source_row",
                 "title", "org_name", "category", "raw_category", "description", "city", "format",
                 "cost_type", "cost_amount", "compensation", "compensation_detail",
                 "grade_min", "grade_max", "age_min", "age_max", "schedule", "time_commitment",
@@ -166,6 +168,32 @@ def main() -> None:
             ),
         )
         pending += 1
+
+    source_files = []
+    if "source_file" in df.columns:
+        source_files = sorted({str(value) for value in df["source_file"].dropna() if str(value).strip()})
+    if not source_files:
+        source_files = [Path(args.input_csv).name]
+    run_id = str(uuid.uuid4())
+    cur.execute(
+        """insert into audit_log (id, actor, action, entity_type, entity_id, detail)
+           values (?, 'pipeline', 'pipeline_import_completed', 'pipeline_import', ?, ?)""",
+        (
+            str(uuid.uuid4()),
+            run_id,
+            json.dumps(
+                {
+                    "sources": source_files,
+                    "inputRows": int(len(df)),
+                    "inserted": inserted,
+                    "queued": pending,
+                    "skipped": skipped,
+                    "duplicateRows": int(df["is_duplicate"].fillna(False).astype(bool).sum()),
+                    "incompleteRows": int(df["incomplete"].fillna(False).astype(bool).sum()),
+                }
+            ),
+        ),
+    )
 
     conn.commit()
     conn.close()

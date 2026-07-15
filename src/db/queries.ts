@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { opportunities, organizations, type OpportunityRow } from "@/db/schema";
 import { Filters, buildConditions, orderBy, visibleCondition } from "@/lib/search";
@@ -64,8 +64,18 @@ export function safeParseArray(json: string | null): string[] {
   }
 }
 
-export function searchOpportunities(filters: Filters, limit = 60): { results: OpportunityCard[]; total: number } {
+export interface SearchOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export function searchOpportunities(
+  filters: Filters,
+  options: SearchOptions = {},
+): { results: OpportunityCard[]; total: number } {
   const conditions = buildConditions(filters);
+  const limit = Math.max(1, Math.min(options.limit ?? 60, 60));
+  const offset = Math.max(0, options.offset ?? 0);
   const rows = db
     .select({ opp: opportunities, orgName: organizations.name })
     .from(opportunities)
@@ -73,8 +83,15 @@ export function searchOpportunities(filters: Filters, limit = 60): { results: Op
     .where(and(...conditions))
     .orderBy(...orderBy(filters))
     .limit(limit)
+    .offset(offset)
     .all();
-  return { results: rows.map(toCard), total: rows.length };
+  const count = db
+    .select({ n: sql<number>`count(*)` })
+    .from(opportunities)
+    .innerJoin(organizations, eq(opportunities.orgId, organizations.id))
+    .where(and(...conditions))
+    .get();
+  return { results: rows.map(toCard), total: count?.n ?? 0 };
 }
 
 export function getOpportunityBySlug(slug: string) {
@@ -124,6 +141,32 @@ export function countVisibleOpportunities(): number {
     .where(visibleCondition())
     .get();
   return row?.n ?? 0;
+}
+
+export function countVisibleByCategory(): { category: string; n: number }[] {
+  return db
+    .select({ category: opportunities.category, n: sql<number>`count(*)` })
+    .from(opportunities)
+    .where(visibleCondition())
+    .groupBy(opportunities.category)
+    .all();
+}
+
+/** The visible listing whose application deadline comes up next. */
+export function nextDeadline(): { title: string; slug: string; applicationDeadline: string } | null {
+  const row = db
+    .select({
+      title: opportunities.title,
+      slug: opportunities.slug,
+      applicationDeadline: opportunities.applicationDeadline,
+    })
+    .from(opportunities)
+    .where(and(visibleCondition(), isNotNull(opportunities.applicationDeadline)))
+    .orderBy(asc(opportunities.applicationDeadline))
+    .limit(1)
+    .get();
+  if (!row?.applicationDeadline) return null;
+  return { title: row.title, slug: row.slug, applicationDeadline: row.applicationDeadline };
 }
 
 export function latestOpportunities(limit = 6): OpportunityCard[] {

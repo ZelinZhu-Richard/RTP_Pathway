@@ -7,7 +7,7 @@ import { SaveButton } from "@/components/SaveCompare";
 
 export function OpportunityCardView({ card, matchReason }: { card: Card; matchReason?: string }) {
   return (
-    <div className="group relative flex flex-col gap-2 rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition hover:border-teal-300 hover:shadow">
+    <div className="group relative flex h-full flex-col gap-2 rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md">
       <div className="flex items-start justify-between gap-2">
         <div>
           <Link href={`/opportunities/${card.slug}`} className="font-semibold text-stone-900 group-hover:text-teal-800">

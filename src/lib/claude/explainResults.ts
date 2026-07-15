@@ -63,10 +63,7 @@ export async function explainResults(
       });
       const parsed = message.parsed_output;
       if (parsed) {
-        // Grounding guard: drop any reference to an id we did not supply.
-        const validIds = new Set(results.map((r) => r.id));
-        const perResult = parsed.perResult.filter((p) => validIds.has(p.id));
-        return { explanation: { summary: parsed.summary, perResult }, usedClaude: true };
+        return { explanation: groundExplanation(parsed, filters, results), usedClaude: true };
       }
     } catch {
       // fall through to template
@@ -99,18 +96,46 @@ function templateExplanation(filters: Filters, results: OpportunityCard[]): Expl
   const summary = `Found ${results.length} ${describeFilters(filters)}. The soonest deadline is listed first — check each listing's source before applying.`;
   return {
     summary,
-    perResult: results.slice(0, 6).map((c) => ({
-      id: c.id,
-      reason: [
-        c.costType === "free" ? "Free" : c.costAmount ?? "Has a fee",
-        c.compensation !== "none" ? costCompText(c).split(" · ")[1] : null,
-        eligibilityText(c),
-        c.city,
-        deadlineText(c.applicationDeadline).toLowerCase(),
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    })),
+    perResult: results.slice(0, 6).map(reasonForCard),
+  };
+}
+
+function reasonForCard(c: OpportunityCard): { id: string; reason: string } {
+  return {
+    id: c.id,
+    reason: [
+      c.costType === "free" ? "Free" : c.costAmount ?? "Has a fee",
+      c.compensation !== "none" ? costCompText(c).split(" · ")[1] : null,
+      eligibilityText(c),
+      c.city,
+      deadlineText(c.applicationDeadline).toLowerCase(),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
+/**
+ * Treat model output only as an ordering/highlight suggestion. IDs are
+ * allow-listed and every displayed claim is rebuilt from stored row fields.
+ */
+export function groundExplanation(
+  modelExplanation: Explanation,
+  filters: Filters,
+  results: OpportunityCard[],
+): Explanation {
+  const cards = new Map(results.map((card) => [card.id, card]));
+  const seen = new Set<string>();
+  const perResult = modelExplanation.perResult.flatMap(({ id }) => {
+    const card = cards.get(id);
+    if (!card || seen.has(id)) return [];
+    seen.add(id);
+    return [reasonForCard(card)];
+  }).slice(0, 6);
+  const deterministic = templateExplanation(filters, results);
+  return {
+    summary: deterministic.summary,
+    perResult: perResult.length > 0 ? perResult : deterministic.perResult,
   };
 }
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { fmtDate } from "@/lib/display";
 import { taxonomy } from "@/lib/taxonomy";
 
 interface Props {
@@ -10,6 +11,12 @@ interface Props {
   initialFields: Record<string, string>;
   missingFields: string[];
   duplicateWarnings: { opportunityId?: string; title?: string; reason?: string }[];
+  sheetSync: {
+    status: "disabled" | "pending" | "synced" | "failed";
+    syncedAt: string | null;
+    error: string | null;
+    remoteRange: string | null;
+  };
 }
 
 const inputCls =
@@ -54,13 +61,14 @@ const FIELD_ORDER: { key: string; label: string; kind?: "textarea" | "date" | "n
   { key: "endDate", label: "End date", kind: "date" },
 ];
 
-export function ReviewForm({ submissionId, initialFields, missingFields, duplicateWarnings }: Props) {
+export function ReviewForm({ submissionId, initialFields, missingFields, duplicateWarnings, sheetSync: initialSheetSync }: Props) {
   const router = useRouter();
   const [fields, setFields] = useState<Record<string, string>>(initialFields);
   const [rolling, setRolling] = useState(initialFields.deadlineType === "rolling");
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "reject" | "sheet" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sheetSync, setSheetSync] = useState(initialSheetSync);
 
   async function act(action: "approve" | "reject") {
     setBusy(action);
@@ -105,8 +113,64 @@ export function ReviewForm({ submissionId, initialFields, missingFields, duplica
     }
   }
 
+  async function retrySheetSync() {
+    setBusy("sheet");
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/submissions/${submissionId}/sheet-sync`, { method: "POST" });
+      const data = await res.json();
+      if (data.status) {
+        setSheetSync({
+          status: data.status,
+          syncedAt: data.syncedAt ?? null,
+          error: data.error ?? null,
+          remoteRange: data.remoteRange ?? null,
+        });
+      }
+      if (!res.ok) throw new Error(data.error ?? "Google Sheets sync failed");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google Sheets sync failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">Google Sheets</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              sheetSync.status === "synced"
+                ? "bg-emerald-50 text-emerald-700"
+                : sheetSync.status === "failed"
+                  ? "bg-red-50 text-red-700"
+                  : sheetSync.status === "pending"
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-stone-100 text-stone-600"
+            }`}
+          >
+            {sheetSync.status}
+          </span>
+          <button
+            type="button"
+            onClick={retrySheetSync}
+            disabled={busy !== null}
+            className="ml-auto rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold hover:bg-stone-50 disabled:opacity-50"
+          >
+            {busy === "sheet" ? "Syncing…" : sheetSync.status === "synced" ? "Sync again" : "Retry sync"}
+          </button>
+        </div>
+        {sheetSync.syncedAt && (
+          <p className="mt-1 text-xs text-stone-500">
+            Last synced {fmtDate(sheetSync.syncedAt, { hour: "numeric", minute: "2-digit" })} UTC
+            {sheetSync.remoteRange ? ` · ${sheetSync.remoteRange}` : ""}
+          </p>
+        )}
+        {sheetSync.error && <p className="mt-1 break-words text-xs text-red-700">{sheetSync.error}</p>}
+      </div>
       {missingFields.length > 0 && (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
           Flagged as missing at submission: {missingFields.join(", ")}

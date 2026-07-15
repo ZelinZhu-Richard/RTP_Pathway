@@ -100,13 +100,22 @@ export const submissions = sqliteTable(
     status: text("status").notNull().default("pending"),
     reviewNote: text("review_note"),
     opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    sheetSyncStatus: text("sheet_sync_status").notNull().default("disabled"),
+    sheetSyncedAt: text("sheet_synced_at"),
+    sheetSyncError: text("sheet_sync_error"),
+    sheetRemoteRange: text("sheet_remote_range"),
     createdAt: text("created_at").notNull().default(nowIso),
     reviewedAt: text("reviewed_at"),
   },
   (t) => [
     index("idx_sub_status").on(t.status),
+    index("idx_sub_sheet_sync_status").on(t.sheetSyncStatus),
     check("chk_sub_source", sql`${t.source} in ('web_form','csv_import')`),
     check("chk_sub_status", sql`${t.status} in ('pending','approved','rejected')`),
+    check(
+      "chk_sub_sheet_sync_status",
+      sql`${t.sheetSyncStatus} in ('disabled','pending','synced','failed')`,
+    ),
   ],
 );
 

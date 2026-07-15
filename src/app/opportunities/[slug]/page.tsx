@@ -194,7 +194,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ sl
       </div>
 
       <p className="text-center text-sm">
-        <Link href="/" className="text-teal-700 hover:underline">
+        <Link href="/explore" className="text-teal-700 hover:underline">
           ← Back to all opportunities
         </Link>
       </p>

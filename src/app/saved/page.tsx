@@ -137,7 +137,7 @@ export default function SavedPage() {
           <p>Nothing saved yet.</p>
           <p className="mt-1 text-sm">
             Tap the bookmark on any{" "}
-            <Link href="/" className="text-teal-700 underline">
+            <Link href="/explore" className="text-teal-700 underline">
               opportunity
             </Link>{" "}
             to keep it here.

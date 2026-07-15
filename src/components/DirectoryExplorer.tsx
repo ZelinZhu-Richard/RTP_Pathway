@@ -2,107 +2,289 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OpportunityCard } from "@/db/queries";
-import type { Filters } from "@/lib/search";
+import {
+  DEFAULT_PAGE_SIZE,
+  filtersToSearchParams,
+  hasActiveFilters,
+  parseFilters,
+  parsePagination,
+  type Filters,
+} from "@/lib/search";
 import { FilterPanel } from "@/components/FilterPanel";
 import { OpportunityCardView } from "@/components/OpportunityCard";
 
-function filtersToParams(filters: Filters): URLSearchParams {
-  const params = new URLSearchParams();
-  if (filters.q) params.set("q", filters.q);
-  for (const key of ["category", "format", "cost", "compensation", "city", "schedule", "sort"] as const) {
-    if (filters[key]) params.set(key, String(filters[key]));
-  }
-  if (filters.grade) params.set("grade", String(filters.grade));
-  if (filters.deadlineWithinDays) params.set("deadlineWithinDays", String(filters.deadlineWithinDays));
-  return params;
+interface SearchResponse {
+  results: OpportunityCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  appliedFilters: Filters;
 }
 
-export function DirectoryExplorer({ initialResults }: { initialResults: OpportunityCard[] }) {
-  const [filters, setFilters] = useState<Filters>({});
+interface Props {
+  initialResults: OpportunityCard[];
+  initialTotal: number;
+  initialFilters?: Filters;
+  initialPage?: number;
+  initialPageSize?: number;
+}
+
+interface RunOptions {
+  updateUrl?: boolean;
+  recordDemand?: boolean;
+  syncDraft?: boolean;
+}
+
+export function DirectoryExplorer({
+  initialResults,
+  initialTotal,
+  initialFilters = {},
+  initialPage = 1,
+  initialPageSize = DEFAULT_PAGE_SIZE,
+}: Props) {
+  const [draftFilters, setDraftFilters] = useState<Filters>(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(initialFilters);
   const [results, setResults] = useState<OpportunityCard[]>(initialResults);
+  const [total, setTotal] = useState(initialTotal);
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
 
-  const runSearch = useCallback(async (next: Filters) => {
-    const seq = ++requestSeq.current;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/opportunities?${filtersToParams(next)}`);
-      const data = await res.json();
-      if (seq === requestSeq.current) setResults(data.results);
-    } catch {
-      // keep previous results on network error
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
-    }
-  }, []);
+  const runSearch = useCallback(
+    async (nextFilters: Filters, nextPage: number, nextPageSize: number, options: RunOptions = {}) => {
+      const seq = ++requestSeq.current;
+      const params = filtersToSearchParams(nextFilters, { page: nextPage, pageSize: nextPageSize });
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/opportunities?${params.toString()}`);
+        if (!response.ok) throw new Error(`Search failed (${response.status})`);
+        const data = (await response.json()) as SearchResponse;
+        if (seq !== requestSeq.current) return;
 
-  // Debounce text input; apply dropdown changes immediately.
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const applyFilters = useCallback(
-    (next: Filters, debounce = false) => {
-      setFilters(next);
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      if (debounce) {
-        debounceTimer.current = setTimeout(() => runSearch(next), 300);
-      } else {
-        runSearch(next);
+        setResults(data.results);
+        setTotal(data.total);
+        setPage(data.page);
+        setPageSize(data.pageSize);
+        setAppliedFilters(data.appliedFilters);
+        if (options.syncDraft) setDraftFilters(data.appliedFilters);
+
+        if (options.updateUrl) {
+          const query = filtersToSearchParams(data.appliedFilters, {
+            page: data.page,
+            pageSize: data.pageSize,
+          }).toString();
+          window.history.pushState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+        }
+
+        // Only an explicit Search/Apply action records demand. Draft edits,
+        // sorting, pagination, URL restoration, and GET requests do not.
+        if (options.recordDemand) {
+          void fetch("/api/search-events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filters: data.appliedFilters,
+            }),
+          }).catch(() => undefined);
+        }
+      } catch (caught) {
+        if (seq === requestSeq.current) {
+          setError(caught instanceof Error ? caught.message : "Search failed");
+        }
+      } finally {
+        if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [runSearch],
+    [],
   );
 
-  useEffect(() => () => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-  }, []);
+  useEffect(() => {
+    const restoreFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const restoredFilters = parseFilters(params);
+      const restoredPagination = parsePagination(params);
+      setDraftFilters(restoredFilters);
+      void runSearch(restoredFilters, restoredPagination.page, restoredPagination.pageSize, {
+        syncDraft: true,
+      });
+    };
+    window.addEventListener("popstate", restoreFromUrl);
+    return () => window.removeEventListener("popstate", restoreFromUrl);
+  }, [runSearch]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const firstResult = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastResult = total === 0 ? 0 : Math.min(page * pageSize, total);
+  const canClear =
+    hasActiveFilters(draftFilters) ||
+    draftFilters.sort === "newest" ||
+    hasActiveFilters(appliedFilters) ||
+    appliedFilters.sort === "newest";
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-        <input
-          type="search"
-          value={filters.q ?? ""}
-          onChange={(e) => applyFilters({ ...filters, q: e.target.value || undefined }, true)}
-          placeholder="Search by keyword: coding, animals, hospital, theater…"
-          className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
-        />
-        <FilterPanel filters={filters} onChange={applyFilters} />
+    <section id="opportunity-directory" aria-labelledby="directory-heading" className="flex flex-col gap-4">
+      <div>
+        <h2 id="directory-heading" className="text-xl font-bold text-stone-900">
+          Explore opportunities
+        </h2>
+        <p className="mt-1 text-sm text-stone-500">
+          Choose filters, then select Search. Only completed searches contribute to anonymous community-demand data.
+        </p>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-stone-500">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void runSearch(draftFilters, 1, pageSize, {
+            updateUrl: true,
+            recordDemand: true,
+            syncDraft: true,
+          });
+        }}
+        className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
+      >
+        <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+          Keyword
+          <input
+            type="search"
+            value={draftFilters.q ?? ""}
+            onChange={(event) =>
+              setDraftFilters((current) => ({ ...current, q: event.target.value || undefined }))
+            }
+            placeholder="Coding, animals, hospital, theater…"
+            className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm font-normal text-stone-800 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+          />
+        </label>
+        <FilterPanel filters={draftFilters} onChange={setDraftFilters} />
+        <div className="flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-3">
+          <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+            Sort results
+            <select
+              value={draftFilters.sort ?? "deadline"}
+              onChange={(event) =>
+                setDraftFilters((current) => ({
+                  ...current,
+                  sort: event.target.value as Filters["sort"],
+                }))
+              }
+              className="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm font-normal text-stone-800 focus:border-teal-500 focus:outline-none"
+            >
+              <option value="deadline">Deadline (soonest)</option>
+              <option value="newest">Newest</option>
+            </select>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={loading || !canClear}
+              onClick={() => {
+                setDraftFilters({});
+                void runSearch({}, 1, pageSize, { updateUrl: true, syncDraft: true });
+              }}
+              className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+            >
+              Clear filters
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-lg bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {error && (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
+          {error}. Your previous results are still shown.
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500" aria-live="polite">
         <span>
-          {loading ? "Searching…" : `${results.length} opportunit${results.length === 1 ? "y" : "ies"}`}
+          {loading
+            ? "Searching…"
+            : total === 0
+              ? "0 opportunities"
+              : `Showing ${firstResult}–${lastResult} of ${total} opportunities`}
         </span>
         <label className="flex items-center gap-2">
-          Sort
+          Results per page
           <select
-            value={filters.sort ?? "deadline"}
-            onChange={(e) => applyFilters({ ...filters, sort: e.target.value as Filters["sort"] })}
+            value={pageSize}
+            onChange={(event) => {
+              const nextPageSize = Number(event.target.value);
+              void runSearch(appliedFilters, 1, nextPageSize, { updateUrl: true });
+            }}
             className="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm focus:outline-none"
           >
-            <option value="deadline">Deadline (soonest)</option>
-            <option value="newest">Newest</option>
+            {[6, 12, 24, 48].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
           </select>
         </label>
       </div>
 
       {results.length === 0 && !loading ? (
         <div className="rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center text-stone-500">
-          <p className="font-medium text-stone-700">No opportunities match those filters yet.</p>
+          <p className="font-medium text-stone-700">No opportunities match that completed search yet.</p>
           <p className="mt-1 text-sm">
-            Try removing a filter — or this might be a real gap. Community organizations can{" "}
+            Try removing a filter—or this may be a real community gap. Organizations can{" "}
             <a href="/submit" className="text-teal-700 underline">
-              submit new opportunities
+              submit an opportunity
             </a>
             .
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {results.map((card) => (
-            <OpportunityCardView key={card.id} card={card} />
+        <div
+          className={`grid grid-cols-1 gap-4 transition-opacity duration-300 md:grid-cols-2 lg:grid-cols-3 ${
+            loading ? "opacity-50" : "opacity-100"
+          }`}
+          aria-busy={loading}
+        >
+          {results.map((card, index) => (
+            <div
+              key={card.id}
+              className="anim-rise h-full"
+              style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
+            >
+              <OpportunityCardView card={card} />
+            </div>
           ))}
         </div>
+      )}
+
+      {total > pageSize && (
+        <nav aria-label="Opportunity results pages" className="flex items-center justify-center gap-3">
+          <button
+            type="button"
+            disabled={loading || page <= 1}
+            onClick={() => void runSearch(appliedFilters, page - 1, pageSize, { updateUrl: true })}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-stone-600">
+            Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+          </span>
+          <button
+            type="button"
+            disabled={loading || page >= totalPages}
+            onClick={() => void runSearch(appliedFilters, page + 1, pageSize, { updateUrl: true })}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </nav>
       )}
     </section>
   );

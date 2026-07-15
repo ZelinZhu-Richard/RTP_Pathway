@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { submissions } from "@/db/schema";
 import { findDuplicates } from "@/lib/duplicates";
+import { isGoogleSheetsSyncEnabled, syncSubmissionToGoogleSheet } from "@/lib/googleSheets";
 import { SubmissionBodySchema, missingListingFields } from "@/lib/submissionSchema";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const { submitterName, submitterEmail, fields, messyText, extractedFields } = parsed.data;
+  const { submitterName, submitterEmail, fields, messyText } = parsed.data;
 
   if (!fields.orgName && !fields.title && !messyText?.trim()) {
     return NextResponse.json(
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
   });
 
   const id = randomUUID();
+  const initialSheetSyncStatus = isGoogleSheetsSyncEnabled() ? "pending" : "disabled";
   db.insert(submissions)
     .values({
       id,
@@ -47,12 +49,26 @@ export async function POST(request: NextRequest) {
       orgName: fields.orgName ?? null,
       rawFields: JSON.stringify(fields),
       messyText: messyText?.trim() || null,
-      extractedFields: extractedFields ? JSON.stringify(extractedFields) : null,
       missingFields: JSON.stringify(missingFields),
       duplicateWarnings: JSON.stringify(duplicateWarnings),
       status: "pending",
+      sheetSyncStatus: initialSheetSyncStatus,
     })
     .run();
 
-  return NextResponse.json({ id, missingFields, duplicateWarnings, status: "pending" }, { status: 201 });
+  // SQLite is authoritative: it has committed before this bounded network
+  // attempt, and a Google outage must never turn a saved submission into a
+  // public-facing failure.
+  let sheetSyncStatus = initialSheetSyncStatus;
+  try {
+    sheetSyncStatus = (await syncSubmissionToGoogleSheet(id)).status;
+  } catch {
+    // The integration records expected failures itself. Preserve the local
+    // success even if an unexpected integration error escapes.
+  }
+
+  return NextResponse.json(
+    { id, missingFields, duplicateWarnings, status: "pending", sheetSyncStatus },
+    { status: 201 },
+  );
 }

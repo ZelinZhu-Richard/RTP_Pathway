@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const { filters, usedClaude: parsedWithClaude } = await parseQuery(q);
 
   // 2. Query the verified database — Claude never selects records itself.
-  const { results, total } = searchOpportunities(filters, 20);
+  const { results, total } = searchOpportunities(filters, { limit: 20 });
   logSearchEvent("nl", q, filters, total);
 
   // 3. Explain the matches, grounded in the returned records only.
