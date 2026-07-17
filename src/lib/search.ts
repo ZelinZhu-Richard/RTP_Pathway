@@ -32,15 +32,43 @@ export interface Pagination {
 
 export const DEFAULT_PAGE_SIZE = 12;
 export const MAX_PAGE_SIZE = 48;
+export const MAX_KEYWORDS = 3;
+export const MAX_KEYWORD_LENGTH = 50;
 
 const inSet = (value: string | undefined, ids: string[]) =>
   value && ids.includes(value) ? value : undefined;
+
+/**
+ * Keep topical URL filters compact and safe to render/share. Comparisons are
+ * case-insensitive so repeated values do not add duplicate SQL conditions.
+ */
+function normalizeKeywords(values: Iterable<string>): string[] {
+  const keywords: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const keyword = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_KEYWORD_LENGTH);
+    const canonical = keyword.toLocaleLowerCase("en-US");
+    if (keyword.length < 2 || seen.has(canonical)) continue;
+    seen.add(canonical);
+    keywords.push(keyword);
+    if (keywords.length === MAX_KEYWORDS) break;
+  }
+  return keywords;
+}
 
 /** Parse and validate filters from URL search params; invalid values are dropped. */
 export function parseFilters(params: URLSearchParams): Filters {
   const filters: Filters = {};
   const q = params.get("q")?.trim();
   if (q) filters.q = q.slice(0, 200);
+  const repeatedKeywords = params.getAll("keyword");
+  // `keywords=a,b` was never emitted by the canonical helper, but accepting it
+  // as a read-only fallback keeps hand-authored and preview-era links working.
+  const legacyKeywords = repeatedKeywords.length === 0
+    ? params.getAll("keywords").flatMap((value) => value.split(","))
+    : [];
+  const keywords = normalizeKeywords([...repeatedKeywords, ...legacyKeywords]);
+  if (keywords.length) filters.keywords = keywords;
   filters.category = inSet(params.get("category") ?? undefined, CATEGORY_IDS);
   filters.format = inSet(params.get("format") ?? undefined, FORMAT_IDS);
   filters.cost = inSet(params.get("cost") ?? undefined, COST_IDS);
@@ -78,6 +106,9 @@ export function filtersToSearchParams(
   const params = new URLSearchParams();
   const q = filters.q?.trim();
   if (q) params.set("q", q.slice(0, 200));
+  for (const keyword of normalizeKeywords(filters.keywords ?? [])) {
+    params.append("keyword", keyword);
+  }
   for (const key of ["category", "format", "cost", "compensation", "city", "schedule"] as const) {
     if (filters[key]) params.set(key, String(filters[key]));
   }

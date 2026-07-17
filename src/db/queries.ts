@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { opportunities, organizations, type OpportunityRow } from "@/db/schema";
+import { eligibilityText } from "@/lib/display";
 import { Filters, buildConditions, orderBy, visibleCondition } from "@/lib/search";
 
 export interface OpportunityCard {
@@ -25,6 +26,13 @@ export interface OpportunityCard {
   applicationDeadline: string | null;
   lastVerifiedAt: string | null;
   sourceUrl: string | null;
+}
+
+/** Public quick-view projection. Deliberately excludes contact/admin fields. */
+export interface PublicOpportunityDetail extends OpportunityCard {
+  description: string;
+  eligibility: string;
+  whatYoullDo: string | null;
 }
 
 function toCard(row: { opp: OpportunityRow; orgName: string }): OpportunityCard {
@@ -112,6 +120,27 @@ export function getOpportunityById(id: string) {
     .where(eq(opportunities.id, id))
     .get();
   return row ?? null;
+}
+
+/**
+ * Fetch an allowlisted detail projection only when the listing is visible in
+ * the public directory (approved and not past its deadline).
+ */
+export function getPublicOpportunityDetailById(id: string): PublicOpportunityDetail | null {
+  const row = db
+    .select({ opp: opportunities, orgName: organizations.name })
+    .from(opportunities)
+    .innerJoin(organizations, eq(opportunities.orgId, organizations.id))
+    .where(and(eq(opportunities.id, id), visibleCondition()))
+    .get();
+  if (!row) return null;
+
+  return {
+    ...toCard(row),
+    description: row.opp.description,
+    eligibility: row.opp.eligibilityNotes?.trim() || eligibilityText(row.opp),
+    whatYoullDo: row.opp.whatYoullDo,
+  };
 }
 
 export function getOpportunitiesByIds(ids: string[]): OpportunityCard[] {

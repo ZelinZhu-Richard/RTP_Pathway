@@ -1,0 +1,230 @@
+.shell {
+  --public-ambient-image-opacity: 0;
+  --public-ambient-network-opacity: 0;
+  --public-ambient-shift-y: 0vh;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  overflow-x: clip;
+  background: #fafaf9;
+  transition: background-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.shell > :global([data-site-header]),
+.shell > :global([data-site-main]),
+.shell > :global([data-site-footer]) {
+  position: relative;
+  z-index: 2;
+}
+
+.shell > :global([data-site-main]) {
+  view-transition-name: page-content;
+}
+
+.cinematic {
+  background: #030617;
+}
+
+.home {
+  --public-ambient-image-opacity: 1;
+  --public-ambient-network-opacity: 0.78;
+  --public-ambient-shift-y: 0vh;
+}
+
+.explore {
+  --public-ambient-image-opacity: 0.58;
+  --public-ambient-network-opacity: 0.42;
+  --public-ambient-shift-y: -3vh;
+}
+
+.ambient {
+  position: fixed;
+  inset: -1px;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.ambientImage {
+  object-fit: cover;
+  object-position: 50% 54%;
+  opacity: var(--public-ambient-image-opacity);
+  transform: translate3d(0, var(--public-ambient-shift-y), 0) scale(1.075);
+  transition:
+    opacity 760ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 1100ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.ambientColor,
+.ambientScrim {
+  position: absolute;
+  inset: 0;
+}
+
+.ambientColor {
+  background:
+    radial-gradient(circle at 18% 72%, rgba(156, 92, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 70%, rgba(65, 177, 255, 0.14), transparent 36%);
+  mix-blend-mode: screen;
+}
+
+.ambientScrim {
+  background:
+    linear-gradient(180deg, rgba(2, 5, 22, 0.88), rgba(3, 7, 30, 0.32) 32%, rgba(3, 5, 20, 0.12) 62%, rgba(3, 6, 23, 0.74)),
+    radial-gradient(circle at 50% 45%, transparent 0 20%, rgba(2, 4, 18, 0.13) 62%, rgba(2, 4, 18, 0.42) 100%);
+}
+
+.explore .ambientScrim {
+  background:
+    linear-gradient(180deg, rgba(2, 5, 22, 0.93), rgba(4, 8, 33, 0.5) 56%, rgba(6, 9, 30, 0.86)),
+    radial-gradient(circle at 50% 42%, transparent 0 16%, rgba(2, 4, 18, 0.3) 72%);
+}
+
+.ambientNetwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: var(--public-ambient-network-opacity);
+  transition: opacity 620ms ease;
+}
+
+.routeVeil {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 55%, rgba(126, 105, 255, 0.2), transparent 48%),
+    #030617;
+  transition: opacity 220ms ease;
+}
+
+.transitioning .routeVeil {
+  opacity: 0.14;
+}
+
+.cinematic > :global([data-site-header]) {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  border-color: rgba(190, 211, 255, 0.1);
+  color: rgba(237, 242, 255, 0.76);
+  background: linear-gradient(
+    180deg,
+    rgba(3, 6, 23, 0.9),
+    rgba(3, 6, 23, 0.3) 72%,
+    transparent
+  );
+  backdrop-filter: blur(14px);
+}
+
+.cinematic > :global([data-site-header]) > div {
+  max-width: none;
+  padding-inline: clamp(1rem, 3vw, 2.5rem);
+}
+
+.cinematic > :global([data-site-header]) a {
+  color: rgba(237, 242, 255, 0.76) !important;
+}
+
+.cinematic > :global([data-site-header]) a:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.cinematic > :global([data-site-header]) :global(.site-wordmark) > span:first-child {
+  color: #fff !important;
+}
+
+.cinematic > :global([data-site-header]) :global(.site-wordmark) > span:last-child {
+  color: rgba(196, 210, 240, 0.58) !important;
+}
+
+.cinematic > :global([data-site-header]) nav a:last-child {
+  color: #080b25 !important;
+  background: #f4f5ff !important;
+}
+
+.cinematic > :global([data-site-header]) nav a:last-child:hover {
+  color: #080b25 !important;
+  background: #fff !important;
+  transform: translateY(-1px);
+}
+
+.home > :global([data-site-main]),
+.explore > :global([data-site-main]) {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.home > :global([data-site-footer]) {
+  border-color: transparent;
+  color: rgba(196, 210, 240, 0.54);
+  background: linear-gradient(180deg, rgba(3, 6, 23, 0.88), #030617 35%);
+}
+
+.home > :global([data-site-footer]) p,
+.home > :global([data-site-footer]) a {
+  color: rgba(196, 210, 240, 0.54);
+}
+
+.explore > :global([data-site-footer]) {
+  border-color: rgba(65, 61, 83, 0.12);
+  color: #6b6577;
+  background: #f5f2f8;
+}
+
+.shell :global(.site-wordmark) {
+  view-transition-name: site-wordmark;
+}
+
+@media (max-width: 760px) {
+  .cinematic > :global([data-site-header]) {
+    background: linear-gradient(
+      180deg,
+      rgba(3, 6, 23, 0.96),
+      rgba(3, 6, 23, 0.68) 78%,
+      transparent
+    );
+  }
+
+  .cinematic > :global([data-site-header]) nav a:nth-child(2),
+  .cinematic > :global([data-site-header]) nav a:nth-child(3) {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .cinematic > :global([data-site-header]) > div {
+    flex-wrap: nowrap;
+  }
+
+  .cinematic > :global([data-site-header]) :global(.site-wordmark) > span:last-child {
+    display: none;
+  }
+
+  .cinematic > :global([data-site-header]) nav {
+    font-size: 0.78rem;
+  }
+
+  .cinematic > :global([data-site-header]) nav a {
+    padding-inline: 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambientImage,
+  .ambientNetwork,
+  .routeVeil,
+  .shell {
+    transition: none;
+  }
+
+}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { CSSProperties } from "react";
 import { getOpportunityBySlug, isPubliclyVisible, safeParseArray } from "@/db/queries";
 import { costCompText, deadlineText, eligibilityText, fmtDate } from "@/lib/display";
 import { categoryLabel, formatLabel, interestLabel, scheduleLabel } from "@/lib/taxonomy";
@@ -30,7 +31,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ sl
   const interests = safeParseArray(opp.interestTags);
 
   return (
-    <article className="mx-auto flex max-w-3xl flex-col gap-4">
+    <article
+      className="mx-auto flex max-w-3xl flex-col gap-4"
+      style={{
+        viewTransitionName: `opportunity-${opp.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+      } as CSSProperties}
+    >
       {closed && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           This opportunity is no longer accepting applications (deadline{" "}

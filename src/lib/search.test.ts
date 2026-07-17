@@ -13,6 +13,7 @@ test("search filters and pagination round-trip through the canonical URL", () =>
   const params = filtersToSearchParams(
     {
       q: "  health program  ",
+      keywords: ["public health", "mentorship"],
       category: "workshop_course",
       city: "Durham",
       grade: 10,
@@ -24,6 +25,7 @@ test("search filters and pagination round-trip through the canonical URL", () =>
 
   assert.deepEqual(parseFilters(params), {
     q: "health program",
+    keywords: ["public health", "mentorship"],
     category: "workshop_course",
     format: undefined,
     cost: undefined,
@@ -34,6 +36,33 @@ test("search filters and pagination round-trip through the canonical URL", () =>
     sort: "newest",
   });
   assert.deepEqual(parsePagination(params), { page: 3, pageSize: 24 });
+  assert.deepEqual(params.getAll("keyword"), ["public health", "mentorship"]);
+});
+
+test("keyword URL params are normalized, deduplicated, and bounded", () => {
+  const params = filtersToSearchParams({
+    keywords: ["  Coding  ", "health\u0000care", "coding", "mentorship", "ignored"],
+  });
+
+  assert.deepEqual(params.getAll("keyword"), ["Coding", "health care", "mentorship"]);
+  assert.deepEqual(parseFilters(params), {
+    keywords: ["Coding", "health care", "mentorship"],
+    category: undefined,
+    format: undefined,
+    cost: undefined,
+    compensation: undefined,
+    city: undefined,
+    schedule: undefined,
+  });
+});
+
+test("legacy comma-separated keyword links remain readable and canonicalize", () => {
+  const filters = parseFilters(
+    new URLSearchParams("keywords=robotics%2C+design%2Cr%2Crobotics%2Cignored"),
+  );
+
+  assert.deepEqual(filters.keywords, ["robotics", "design", "ignored"]);
+  assert.equal(filtersToSearchParams(filters).toString(), "keyword=robotics&keyword=design&keyword=ignored");
 });
 
 test("pagination rejects invalid pages and caps page size", () => {
